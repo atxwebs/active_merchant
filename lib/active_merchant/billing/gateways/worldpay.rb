@@ -90,8 +90,10 @@ module ActiveMerchant #:nodoc:
 
       def refund(money, authorization, options = {})
         authorization = order_id_from_authorization(authorization.to_s)
+        success_criteria = %w(CAPTURED SETTLED SETTLED_BY_MERCHANT SENT_FOR_REFUND)
+        success_criteria.push('AUTHORIZED') if options[:cancel_or_refund]
         response = MultiResponse.run do |r|
-          r.process { inquire_request(authorization, options, 'CAPTURED', 'SETTLED', 'SETTLED_BY_MERCHANT', 'SENT_FOR_REFUND') } unless options[:authorization_validated]
+          r.process { inquire_request(authorization, options, *success_criteria) } unless options[:authorization_validated]
           r.process { refund_request(money, authorization, options) }
         end
 
@@ -125,6 +127,10 @@ module ActiveMerchant #:nodoc:
       end
 
       def supports_scrubbing
+        true
+      end
+
+      def supports_network_tokenization?
         true
       end
 
@@ -233,13 +239,22 @@ module ActiveMerchant #:nodoc:
       end
 
       def build_void_request(authorization, options)
-        build_order_modify_request(authorization, &:cancel)
+        if options[:cancel_or_refund]
+          build_order_modify_request(authorization, &:cancelOrRefund)
+        else
+          build_order_modify_request(authorization, &:cancel)
+        end
       end
 
       def build_refund_request(money, authorization, options)
         build_order_modify_request(authorization) do |xml|
-          xml.refund do
-            add_amount(xml, money, options.merge(debit_credit_indicator: 'credit'))
+          if options[:cancel_or_refund]
+            # Worldpay docs claim amount must be passed. This causes an error.
+            xml.cancelOrRefund # { add_amount(xml, money, options.merge(debit_credit_indicator: 'credit')) }
+          else
+            xml.refund do
+              add_amount(xml, money, options.merge(debit_credit_indicator: 'credit'))
+            end
           end
         end
       end
@@ -382,6 +397,8 @@ module ActiveMerchant #:nodoc:
               add_amount(xml, amount, options)
             end
           end
+        elsif options[:payment_type] == :network_token
+          add_network_tokenization_card(xml, payment_method)
         else
           xml.paymentDetails credit_fund_transfer_attribute(options) do
             if options[:payment_type] == :token
@@ -404,6 +421,22 @@ module ActiveMerchant #:nodoc:
             if three_d_secure = options[:three_d_secure]
               add_three_d_secure(three_d_secure, xml)
             end
+          end
+        end
+      end
+
+      def add_network_tokenization_card(xml, payment_method)
+        xml.paymentDetails do
+          xml.tag! 'EMVCO_TOKEN-SSL', 'type' => 'NETWORKTOKEN' do
+            xml.tokenNumber payment_method.number
+            xml.expiryDate do
+              xml.date(
+                'month' => format(payment_method.month, :two_digits),
+                'year' => format(payment_method.year, :four_digits)
+              )
+            end
+            xml.cryptogram payment_method.payment_cryptogram
+            xml.eciIndicator format(payment_method.eci, :two_digits)
           end
         end
       end
@@ -723,7 +756,9 @@ module ActiveMerchant #:nodoc:
 
       def payment_details_from(payment_method)
         payment_details = {}
-        if payment_method.respond_to?(:number)
+        if payment_method.is_a?(NetworkTokenizationCreditCard) && payment_method.source == :network_token
+          payment_details[:payment_type] = :network_token
+        elsif payment_method.respond_to?(:number)
           payment_details[:payment_type] = :credit
         else
           token_details = token_details_from_authorization(payment_method)

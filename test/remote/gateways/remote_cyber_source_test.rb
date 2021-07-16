@@ -6,6 +6,7 @@ class RemoteCyberSourceTest < Test::Unit::TestCase
     Base.mode = :test
 
     @gateway = CyberSourceGateway.new({ nexus: 'NC' }.merge(fixtures(:cyber_source)))
+    @gateway_latam = CyberSourceGateway.new({}.merge(fixtures(:cyber_source_latam_pe)))
 
     @credit_card = credit_card('4111111111111111', verification_value: '987')
     @declined_card = credit_card('801111111111111')
@@ -204,10 +205,29 @@ class RemoteCyberSourceTest < Test::Unit::TestCase
     assert !response.authorization.blank?
   end
 
-  def test_successful_authorization_with_installment_total_count
-    assert response = @gateway.authorize(@amount, @credit_card, installment_total_count: 5)
+  def test_successful_authorization_with_installment_data
+    options = @options.merge(installment_total_count: 5, installment_plan_type: 1, first_installment_date: '300101')
+    assert response = @gateway.authorize(@amount, @credit_card, options)
     assert_successful_response(response)
     assert !response.authorization.blank?
+  end
+
+  def test_successful_authorization_with_merchant_tax_id
+    options = @options.merge(merchant_tax_id: '123')
+    assert response = @gateway.authorize(@amount, @credit_card, options)
+    assert_successful_response(response)
+  end
+
+  def test_successful_authorization_with_sales_slip_number
+    options = @options.merge(sales_slip_number: '456')
+    assert response = @gateway.authorize(@amount, @credit_card, options)
+    assert_successful_response(response)
+  end
+
+  def test_successful_authorization_with_airline_agent_code
+    options = @options.merge(airline_agent_code: '7Q')
+    assert response = @gateway.authorize(@amount, @credit_card, options)
+    assert_successful_response(response)
   end
 
   def test_unsuccessful_authorization
@@ -222,6 +242,15 @@ class RemoteCyberSourceTest < Test::Unit::TestCase
     assert_successful_response(purchase)
     assert void = @gateway.void(purchase.authorization, @options)
     assert_successful_response(void)
+  end
+
+  def test_successful_asynchronous_adjust
+    assert authorize = @gateway_latam.authorize(@amount, @credit_card, @options)
+    assert_successful_response(authorize)
+    assert adjust = @gateway_latam.adjust(@amount * 2, authorize.authorization, @options)
+    assert_success adjust
+    assert capture = @gateway_latam.capture(@amount, authorize.authorization, @options)
+    assert_successful_response(capture)
   end
 
   def test_authorize_and_void
@@ -352,6 +381,18 @@ class RemoteCyberSourceTest < Test::Unit::TestCase
     assert_successful_response(response)
   end
 
+  def test_successful_authorize_with_customer_id
+    options = @options.merge(customer_id: '7500BB199B4270EFE05348D0AFCAD')
+    assert response = @gateway.authorize(@amount, @credit_card, options)
+    assert_successful_response(response)
+  end
+
+  def test_successful_purchase_with_customer_id
+    options = @options.merge(customer_id: '7500BB199B4270EFE00588D0AFCAD')
+    assert response = @gateway.purchase(@amount, @credit_card, options)
+    assert_successful_response(response)
+  end
+
   def test_successful_purchase_with_elo
     assert response = @gateway.purchase(@amount, @elo_credit_card, @options)
     assert_successful_response(response)
@@ -396,7 +437,7 @@ class RemoteCyberSourceTest < Test::Unit::TestCase
     assert_successful_response(response)
   end
 
-  def test_successful_pinless_debit_card_puchase
+  def test_successful_pinless_debit_card_purchase
     assert response = @gateway.purchase(@amount, @pinless_debit_card, @options.merge(pinless_debit_card: true))
     assert_successful_response(response)
   end

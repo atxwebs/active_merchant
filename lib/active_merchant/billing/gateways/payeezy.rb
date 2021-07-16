@@ -39,6 +39,7 @@ module ActiveMerchant
         add_address(params, options)
         add_amount(params, amount, options)
         add_soft_descriptors(params, options)
+        add_level2_data(params, options)
         add_stored_credentials(params, options)
 
         commit(params, options)
@@ -53,6 +54,7 @@ module ActiveMerchant
         add_address(params, options)
         add_amount(params, amount, options)
         add_soft_descriptors(params, options)
+        add_level2_data(params, options)
         add_stored_credentials(params, options)
 
         commit(params, options)
@@ -74,6 +76,14 @@ module ActiveMerchant
         add_authorization_info(params, authorization)
         add_amount(params, (amount || amount_from_authorization(authorization)), options)
 
+        commit(params, options)
+      end
+
+      def credit(amount, payment_method, options = {})
+        params = { transaction_type: 'refund' }
+
+        add_amount(params, amount, options)
+        add_payment_method(params, payment_method, options)
         commit(params, options)
       end
 
@@ -244,6 +254,13 @@ module ActiveMerchant
 
       def add_soft_descriptors(params, options)
         params[:soft_descriptors] = options[:soft_descriptors] if options[:soft_descriptors]
+      end
+
+      def add_level2_data(params, options)
+        return unless level2_data = options[:level2]
+
+        params[:level2] = {}
+        params[:level2][:customer_ref] = level2_data[:customer_ref]
       end
 
       def add_stored_credentials(params, options)

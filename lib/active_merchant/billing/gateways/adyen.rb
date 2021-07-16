@@ -59,6 +59,7 @@ module ActiveMerchant #:nodoc:
         add_3ds_authenticated_data(post, options)
         add_splits(post, options)
         add_recurring_contract(post, options)
+        add_network_transaction_reference(post, options)
         commit('authorise', post, options)
       end
 
@@ -67,14 +68,16 @@ module ActiveMerchant #:nodoc:
         add_invoice_for_modification(post, money, options)
         add_reference(post, authorization, options)
         add_splits(post, options)
+        add_network_transaction_reference(post, options)
         commit('capture', post, options)
       end
 
       def refund(money, authorization, options = {})
         post = init_post(options)
         add_invoice_for_modification(post, money, options)
-        add_original_reference(post, authorization, options)
+        add_reference(post, authorization, options)
         add_splits(post, options)
+        add_network_transaction_reference(post, options)
         commit('refund', post, options)
       end
 
@@ -83,6 +86,7 @@ module ActiveMerchant #:nodoc:
         add_invoice(post, money, options)
         add_payment(post, payment, options)
         add_shopper_reference(post, options)
+        add_network_transaction_reference(post, options)
         commit('refundWithData', post, options)
       end
 
@@ -90,6 +94,7 @@ module ActiveMerchant #:nodoc:
         post = init_post(options)
         endpoint = options[:cancel_or_refund] ? 'cancelOrRefund' : 'cancel'
         add_reference(post, authorization, options)
+        add_network_transaction_reference(post, options)
         commit(endpoint, post, options)
       end
 
@@ -383,7 +388,7 @@ module ActiveMerchant #:nodoc:
         }
 
         card.delete_if { |_k, v| v.blank? }
-        card[:holderName] ||= 'Not Provided' if credit_card.is_a?(NetworkTokenizationCreditCard)
+        card[:holderName] ||= 'Not Provided'
         requires!(card, :expiryMonth, :expiryYear, :holderName, :number)
         post[:card] = card
       end
@@ -394,18 +399,14 @@ module ActiveMerchant #:nodoc:
         options
       end
 
-      def add_reference(post, authorization, options = {})
-        _, psp_reference, = authorization.split('#')
-        post[:originalReference] = single_reference(authorization) || psp_reference
+      def add_network_transaction_reference(post, options)
+        post[:additionalData] = {} unless post[:additionalData]
+        post[:additionalData][:networkTxReference] = options[:network_transaction_id] if options[:network_transaction_id]
       end
 
-      def add_original_reference(post, authorization, options = {})
-        if authorization.start_with?('#')
-          _, original_psp_reference, = authorization.split('#')
-        else
-          original_psp_reference, = authorization.split('#')
-        end
-        post[:originalReference] = single_reference(authorization) || original_psp_reference
+      def add_reference(post, authorization, options = {})
+        original_reference = authorization.split('#').reject(&:empty?).first
+        post[:originalReference] = original_reference
       end
 
       def add_mpi_data_for_network_tokenization_card(post, payment)
@@ -414,10 +415,6 @@ module ActiveMerchant #:nodoc:
         post[:mpiData][:cavv] = payment.payment_cryptogram
         post[:mpiData][:directoryResponse] = 'Y'
         post[:mpiData][:eci] = payment.eci || '07'
-      end
-
-      def single_reference(authorization)
-        authorization if !authorization.include?('#')
       end
 
       def add_recurring_contract(post, options = {})
@@ -511,6 +508,7 @@ module ActiveMerchant #:nodoc:
           raw_response = e.response.body
           response = parse(raw_response)
         end
+
         success = success_from(action, response, options)
         Response.new(
           success,
@@ -519,6 +517,7 @@ module ActiveMerchant #:nodoc:
           authorization: authorization_from(action, parameters, response),
           test: test?,
           error_code: success ? nil : error_code_from(response),
+          network_transaction_id: network_transaction_id_from(response),
           avs_result: AVSResult.new(code: avs_code_from(response)),
           cvv_result: CVVResult.new(cvv_result_from(response))
         )
@@ -609,7 +608,7 @@ module ActiveMerchant #:nodoc:
       def init_post(options = {})
         post = {}
         add_merchant_account(post, options)
-        post[:reference] = options[:order_id] if options[:order_id]
+        post[:reference] = options[:order_id][0..79] if options[:order_id]
         post
       end
 
@@ -619,6 +618,10 @@ module ActiveMerchant #:nodoc:
 
       def error_code_from(response)
         STANDARD_ERROR_CODE_MAPPING[response['errorCode']]
+      end
+
+      def network_transaction_id_from(response)
+        response.dig('additionalData', 'networkTxReference')
       end
 
       def add_browser_info(browser_info, post)

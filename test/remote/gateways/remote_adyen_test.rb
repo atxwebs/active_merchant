@@ -132,6 +132,8 @@ class RemoteAdyenTest < Test::Unit::TestCase
       }
     }
 
+    @long_order_id = 'asdfjkl;asdfjkl;asdfj;aiwyutinvpoaieryutnmv;203987528752098375j3q-p489756ijmfpvbijpq348nmdf;vbjp3845'
+
     @sub_seller_options = {
       "subMerchant.numberOfSubSellers": '2',
       "subMerchant.subSeller1.id": '111111111',
@@ -409,6 +411,20 @@ class RemoteAdyenTest < Test::Unit::TestCase
     assert_equal 'Authorised', response.message
   end
 
+  def test_successful_authorize_with_credit_card_no_name
+    credit_card_no_name = ActiveMerchant::Billing::CreditCard.new({
+      number: '4111111111111111',
+      month: 3,
+      year: 2030,
+      verification_value: '737',
+      brand: 'visa'
+    })
+
+    response = @gateway.authorize(@amount, credit_card_no_name, @options)
+    assert_success response
+    assert_equal 'Authorised', response.message
+  end
+
   def test_failed_authorize
     response = @gateway.authorize(@amount, @declined_card, @options)
     assert_failure response
@@ -489,6 +505,12 @@ class RemoteAdyenTest < Test::Unit::TestCase
 
   def test_successful_purchase_with_google_pay
     response = @gateway.purchase(@amount, @google_pay_card, @options)
+    assert_success response
+    assert_equal '[capture-received]', response.message
+  end
+
+  def test_successful_purchase_with_google_pay_and_truncate_order_id
+    response = @gateway.purchase(@amount, @google_pay_card, @options.merge(order_id: @long_order_id))
     assert_success response
     assert_equal '[capture-received]', response.message
   end
@@ -1100,6 +1122,27 @@ class RemoteAdyenTest < Test::Unit::TestCase
     assert_success purchase
   end
 
+  def test_auth_and_capture_with_network_txn_id
+    initial_options = stored_credential_options(:merchant, :recurring, :initial)
+    assert auth = @gateway.authorize(@amount, @credit_card, initial_options)
+    assert auth.network_transaction_id
+
+    assert capture = @gateway.capture(@amount, auth.authorization, @options.merge(network_transaction_id: auth.network_transaction_id))
+    assert_success capture
+  end
+
+  def test_auth_capture_refund_with_network_txn_id
+    initial_options = stored_credential_options(:merchant, :recurring, :initial)
+    assert auth = @gateway.authorize(@amount, @credit_card, initial_options)
+    assert auth.network_transaction_id
+
+    assert capture = @gateway.capture(@amount, auth.authorization, @options.merge(network_transaction_id: auth.network_transaction_id))
+    assert_success capture
+
+    assert refund = @gateway.refund(@amount, auth.authorization, @options.merge(network_transaction_id: auth.network_transaction_id))
+    assert_success refund
+  end
+
   def test_successful_authorize_with_sub_merchant_data
     sub_merchant_data = {
       sub_merchant_id: '123451234512345',
@@ -1151,6 +1194,32 @@ class RemoteAdyenTest < Test::Unit::TestCase
     assert void = @gateway.void(auth.authorization, @options)
     assert_success void
     assert_equal '[cancelOrRefund-received]', void.message
+    assert_void_references_original_authorization(void, auth)
+  end
+
+  def test_successful_cancel_or_refund_passing_purchase
+    purchase = @gateway.purchase(@amount, @credit_card, @options)
+    assert_success purchase
+
+    @options[:cancel_or_refund] = true
+    assert void = @gateway.void(purchase.authorization, @options)
+    assert_success void
+    assert_equal '[cancelOrRefund-received]', void.message
+    assert_void_references_original_authorization(void, purchase.responses.first)
+  end
+
+  def test_successful_cancel_or_refund_passing_capture
+    auth = @gateway.authorize(@amount, @credit_card, @options)
+    assert_success auth
+
+    capture = @gateway.capture(@amount, auth.authorization)
+    assert_success capture
+
+    @options[:cancel_or_refund] = true
+    assert void = @gateway.void(capture.authorization, @options)
+    assert_success void
+    assert_equal '[cancelOrRefund-received]', void.message
+    assert_void_references_original_authorization(void, auth)
   end
 
   private
@@ -1158,5 +1227,9 @@ class RemoteAdyenTest < Test::Unit::TestCase
   def stored_credential_options(*args, id: nil)
     @options.merge(order_id: generate_unique_id,
                    stored_credential: stored_credential(*args, id: id))
+  end
+
+  def assert_void_references_original_authorization(void, auth)
+    assert_equal void.authorization.split('#').first, auth.params['pspReference']
   end
 end

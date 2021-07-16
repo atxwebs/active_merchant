@@ -40,7 +40,7 @@ class CreditCardMethodsTest < Test::Unit::TestCase
        596245 596289 596399 596405 596590 596608 596645 596646 596791 596808 596815 596846 597077 597094
        597143 597370 597410 597765 597855 597862 598053 598054 598395 598585 598793 598794 598815 598835
        598838 598880 598889 599000 599069 599089 599148 599191 599310 599741 599742 599867 601070 604983
-       606126 636380 636422 636502 636639 637046 637756 639130 690032]
+       601638 606126 636380 636422 636502 636639 637046 637756 639130 639229 690032]
   end
 
   def test_should_be_able_to_identify_valid_expiry_months
@@ -131,6 +131,15 @@ class CreditCardMethodsTest < Test::Unit::TestCase
     assert_equal 'jcb', CreditCard.brand?('3528000000000000')
     assert_equal 'jcb', CreditCard.brand?('3580000000000000')
     assert_equal 'jcb', CreditCard.brand?('3088000000000017')
+    assert_equal 'jcb', CreditCard.brand?('3094000000000017')
+    assert_equal 'jcb', CreditCard.brand?('3096000000000000')
+    assert_equal 'jcb', CreditCard.brand?('3102000000000017')
+    assert_equal 'jcb', CreditCard.brand?('3112000000000000')
+    assert_equal 'jcb', CreditCard.brand?('3120000000000017')
+    assert_equal 'jcb', CreditCard.brand?('3158000000000000')
+    assert_equal 'jcb', CreditCard.brand?('3159000000000017')
+    assert_equal 'jcb', CreditCard.brand?('3337000000000000')
+    assert_equal 'jcb', CreditCard.brand?('3349000000000017')
   end
 
   def test_should_detect_maestro_dk_as_maestro
@@ -148,6 +157,12 @@ class CreditCardMethodsTest < Test::Unit::TestCase
   def test_should_detect_mastercard
     assert_equal 'master', CreditCard.brand?('2720890000000000')
     assert_equal 'master', CreditCard.brand?('5413031000000000')
+    assert_equal 'master', CreditCard.brand?('6052721000000000')
+    assert_equal 'master', CreditCard.brand?('6062821000000000')
+    assert_equal 'master', CreditCard.brand?('6370951000000000')
+    assert_equal 'master', CreditCard.brand?('6375681000000000')
+    assert_equal 'master', CreditCard.brand?('6375991000000000')
+    assert_equal 'master', CreditCard.brand?('6376091000000000')
   end
 
   def test_should_detect_forbrugsforeningen
@@ -170,6 +185,18 @@ class CreditCardMethodsTest < Test::Unit::TestCase
     10.times do
       number = rand(5058740000000001..5058749999999999).to_s
       assert_equal 'alia', CreditCard.brand?(number)
+      assert CreditCard.valid_number?(number)
+    end
+  end
+
+  def test_should_detect_confiable_card
+    assert_equal 'confiable', CreditCard.brand?('5607180000000000')
+  end
+
+  def test_confiable_number_not_validated
+    10.times do
+      number = rand(5607180000000001..5607189999999999).to_s
+      assert_equal 'confiable', CreditCard.brand?(number)
       assert CreditCard.valid_number?(number)
     end
   end

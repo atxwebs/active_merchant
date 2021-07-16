@@ -34,14 +34,15 @@ module ActiveMerchant #:nodoc:
       def purchase(money, payment, options = {})
         commerce = options[:commerce] || @options[:commerce]
         commerce_branch = options[:commerce_branch] || @options[:commerce_branch]
+        shop_process_id = options[:shop_process_id] || @shop_process_id
 
-        token = generate_token(@shop_process_id, 'pay_pci', commerce, commerce_branch, amount(money), currency(money))
+        token = generate_token(shop_process_id, 'pay_pci', commerce, commerce_branch, amount(money), currency(money))
 
         post = {}
         post[:token] = token
-        post[:commerce] = commerce
-        post[:commerce_branch] = commerce_branch
-        post[:shop_process_id] = @shop_process_id
+        post[:commerce] = commerce.to_s
+        post[:commerce_branch] = commerce_branch.to_s
+        post[:shop_process_id] = shop_process_id
         post[:number_of_payments] = options[:number_of_payments] || 1
         post[:recursive] = options[:recursive] || false
 
@@ -52,13 +53,50 @@ module ActiveMerchant #:nodoc:
         commit(:pay_pci_buy_encrypted, post)
       end
 
-      def void(_authorization, options = {})
-        token = generate_token(@shop_process_id, 'rollback', '0.00')
+      def void(authorization, options = {})
+        _, shop_process_id = authorization.to_s.split('#')
+        token = generate_token(shop_process_id, 'rollback', '0.00')
         post = {
           token: token,
-          shop_process_id: @shop_process_id
+          shop_process_id: shop_process_id
         }
         commit(:pci_buy_rollback, post)
+      end
+
+      def credit(money, payment, options = {})
+        # Not permitted for foreign cards.
+        commerce = options[:commerce] || @options[:commerce]
+        commerce_branch = options[:commerce_branch] || @options[:commerce_branch]
+
+        token = generate_token(@shop_process_id, 'refund', commerce, commerce_branch, amount(money), currency(money))
+        post = {}
+        post[:token] = token
+        post[:commerce] = commerce.to_i
+        post[:commerce_branch] = commerce_branch.to_i
+        post[:shop_process_id] = @shop_process_id
+        add_invoice(post, money, options)
+        add_card_data(post, payment)
+        add_customer_data(post, options)
+        post[:origin_shop_process_id] = options[:original_shop_process_id] if options[:original_shop_process_id]
+        commit(:refund, post)
+      end
+
+      def refund(money, authorization, options = {})
+        commerce = options[:commerce] || @options[:commerce]
+        commerce_branch = options[:commerce_branch] || @options[:commerce_branch]
+        shop_process_id = options[:shop_process_id] || @shop_process_id
+        _, original_shop_process_id = authorization.to_s.split('#')
+
+        token = generate_token(shop_process_id, 'refund', commerce, commerce_branch, amount(money), currency(money))
+        post = {}
+        post[:token] = token
+        post[:commerce] = commerce.to_i
+        post[:commerce_branch] = commerce_branch.to_i
+        post[:shop_process_id] = shop_process_id
+        add_invoice(post, money, options)
+        add_customer_data(post, options)
+        post[:origin_shop_process_id] = original_shop_process_id || options[:original_shop_process_id]
+        commit(:refund, post)
       end
 
       def supports_scrubbing?
@@ -106,7 +144,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_customer_data(post, options)
-        post[:additional_data] = options[:additional_data] # must be passed even if empty
+        post[:additional_data] = options[:additional_data] || '' # must be passed even if empty
       end
 
       def parse(body)
@@ -144,14 +182,24 @@ module ActiveMerchant #:nodoc:
       end
 
       def message_from(response)
-        response.dig('confirmation', 'extended_response_description') ||
-          response.dig('confirmation', 'response_description') ||
-          response.dig('confirmation', 'response_details') ||
-          response.dig('messages', 0, 'key')
+        %w(confirmation refund).each do |m|
+          message =
+            response.dig(m, 'extended_response_description') ||
+            response.dig(m, 'response_description') ||
+            response.dig(m, 'response_details')
+          return message if message
+        end
+        [response.dig('messages', 0, 'key'), response.dig('messages', 0, 'dsc')].join(':')
       end
 
       def authorization_from(response)
-        response.dig('confirmation', 'authorization_number')
+        response_body = response.dig('confirmation') || response.dig('refund')
+        return unless response_body
+
+        authorization_number = response_body.dig('authorization_number') || response_body.dig('authorization_code')
+        shop_process_id = response_body.dig('shop_process_id')
+
+        "#{authorization_number}##{shop_process_id}"
       end
 
       def error_code_from(response)

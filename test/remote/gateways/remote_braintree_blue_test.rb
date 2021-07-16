@@ -167,6 +167,17 @@ class RemoteBraintreeBlueTest < Test::Unit::TestCase
     assert_equal '1000 Approved', response.message
   end
 
+  def test_successful_purchase_sending_risk_data
+    options = @options.merge(
+      risk_data: {
+        customer_browser: 'User-Agent Header',
+        customer_ip: '127.0.0.1'
+      }
+    )
+    assert response = @gateway.purchase(@amount, @credit_card, options)
+    assert_success response
+  end
+
   def test_successful_verify
     assert response = @gateway.verify(@credit_card, @options)
     assert_success response
@@ -186,6 +197,14 @@ class RemoteBraintreeBlueTest < Test::Unit::TestCase
     assert_match 'OK', response.message
     assert_equal 'M', response.cvv_result['code']
     assert_equal 'P', response.avs_result['code']
+  end
+
+  def test_failed_credit_card_verification
+    credit_card = credit_card('378282246310005', verification_value: '544')
+
+    assert response = @gateway.verify(credit_card, @options.merge({ allow_card_verification: true }))
+    assert_failure response
+    assert_match 'CVV must be 4 digits for American Express and 3 digits for other card types. (81707)', response.message
   end
 
   def test_successful_verify_with_device_data
@@ -953,6 +972,25 @@ class RemoteBraintreeBlueTest < Test::Unit::TestCase
     response = @gateway.purchase(@amount, credit_card('4111111111111111'), @options.merge(stored_credential: creds_options))
     assert_success response
     assert_equal '1000 Approved', response.message
+    assert_equal 'submitted_for_settlement', response.params['braintree_transaction']['status']
+  end
+
+  def test_successful_cardholder_purchase_initial_setup
+    creds_options = { initiator: 'merchant', reason_type: 'recurring_first', initial_transaction: true }
+    response = @gateway.purchase(@amount, credit_card('4111111111111111'), @options.merge(stored_credential: creds_options))
+    assert_success response
+    assert_equal '1000 Approved', response.message
+    assert_not_nil response.params['braintree_transaction']['network_transaction_id']
+    assert_equal 'submitted_for_settlement', response.params['braintree_transaction']['status']
+    assert_equal true, response.params['braintree_transaction']['recurring']
+  end
+
+  def test_successful_cardholder_purchase_initial_moto
+    creds_options = { initiator: 'merchant', reason_type: 'moto', initial_transaction: true }
+    response = @gateway.purchase(@amount, credit_card('4111111111111111'), @options.merge(stored_credential: creds_options))
+    assert_success response
+    assert_equal '1000 Approved', response.message
+    assert_not_nil response.params['braintree_transaction']['network_transaction_id']
     assert_equal 'submitted_for_settlement', response.params['braintree_transaction']['status']
   end
 

@@ -42,6 +42,7 @@ module ActiveMerchant #:nodoc:
       }
 
       SUCCESS = '0'
+      APPROVAL_SUCCESS = '1'
 
       APPROVED = [
         '00', # Approved
@@ -235,6 +236,7 @@ module ActiveMerchant #:nodoc:
             add_managed_billing(xml, options)
           end
         end
+
         commit(order, :purchase, options[:retry_logic], options[:trace_number])
       end
 
@@ -449,15 +451,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_address(xml, payment_source, options)
-        address = (options[:billing_address] || options[:address])
-
-        # always send the AVSname if the payment is a check regardless
-        # if there's an address or not
-        if payment_source.is_a?(Check) && address.blank?
-          xml.tag! :AVSname, (payment_source&.name ? payment_source.name[0..29] : nil)
-
-          return
-        end
+        address = get_address(options)
 
         unless address.blank?
           avs_supported = AVS_SUPPORTED_COUNTRIES.include?(address[:country].to_s) || empty?(address[:country])
@@ -471,11 +465,19 @@ module ActiveMerchant #:nodoc:
             xml.tag! :AVSphoneNum, (address[:phone] ? address[:phone].scan(/\d/).join.to_s[0..13] : nil)
           end
 
-          xml.tag! :AVSname, (payment_source&.name ? payment_source.name[0..29] : nil)
+          xml.tag! :AVSname, billing_name(payment_source, options)
           xml.tag! :AVScountryCode, (avs_supported ? byte_limit(format_address_field(address[:country]), 2) : '')
 
           # Needs to come after AVScountryCode
           add_destination_address(xml, address) if avs_supported
+        end
+      end
+
+      def billing_name(payment_source, options)
+        if payment_source&.name.present?
+          payment_source.name[0..29]
+        elsif options[:billing_address][:name].present?
+          options[:billing_address][:name][0..29]
         end
       end
 
@@ -497,7 +499,9 @@ module ActiveMerchant #:nodoc:
 
       # For Profile requests
       def add_customer_address(xml, options)
-        if (address = (options[:billing_address] || options[:address]))
+        address = get_address(options)
+
+        unless address.blank?
           avs_supported = AVS_SUPPORTED_COUNTRIES.include?(address[:country].to_s)
 
           xml.tag! :CustomerAddress1, byte_limit(format_address_field(address[:address1]), 30)
@@ -537,6 +541,8 @@ module ActiveMerchant #:nodoc:
           else
             xml.tag! :BankPmtDelv, 'B'
           end
+
+          xml.tag! :AVSname, (check&.name ? check.name[0..29] : nil) if get_address(options).blank?
         end
       end
 
@@ -607,10 +613,18 @@ module ActiveMerchant #:nodoc:
         xml.tag!(:MCDirectoryTransID, three_d_secure[:ds_transaction_id]) if three_d_secure[:ds_transaction_id]
       end
 
-      def add_ucafind(xml, creditcard, three_d_secure)
+      def add_mc_ucafind(xml, creditcard, three_d_secure)
         return unless three_d_secure && creditcard.brand == 'master'
 
         xml.tag! :UCAFInd, '4'
+      end
+
+      def add_mc_scarecurring(xml, creditcard, parameters, three_d_secure)
+        return unless parameters && parameters[:sca_recurring] && creditcard.brand == 'master'
+
+        valid_eci = three_d_secure && three_d_secure[:eci] && three_d_secure[:eci] == '7'
+
+        xml.tag!(:SCARecurringPayment, parameters[:sca_recurring]) if valid_eci
       end
 
       def add_dpanind(xml, creditcard)
@@ -669,7 +683,9 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_ews_details(xml, payment_source, parameters = {})
-        xml.tag! :EWSFirstName, payment_source.first_name
+        split_name = payment_source.first_name.split if payment_source.first_name
+        xml.tag! :EWSFirstName, split_name[0]
+        xml.tag! :EWSMiddleName, split_name[1..-1].join(' ')
         xml.tag! :EWSLastName, payment_source.last_name
         xml.tag! :EWSBusinessName, parameters[:company] if payment_source.first_name.empty? && payment_source.last_name.empty?
 
@@ -738,7 +754,7 @@ module ActiveMerchant #:nodoc:
 
       def parse(body)
         response = {}
-        xml = REXML::Document.new(body)
+        xml = REXML::Document.new(strip_invalid_xml_chars(body))
         root = REXML::XPath.first(xml, '//Response') ||
                REXML::XPath.first(xml, '//ErrorResponse')
         if root
@@ -792,8 +808,10 @@ module ActiveMerchant #:nodoc:
       end
 
       def success?(response, message_type)
-        if %i[refund void].include?(message_type)
+        if %i[void].include?(message_type)
           response[:proc_status] == SUCCESS
+        elsif %i[refund].include?(message_type)
+          response[:proc_status] == SUCCESS && response[:approval_status] == APPROVAL_SUCCESS
         elsif response[:customer_profile_action]
           response[:profile_proc_status] == SUCCESS
         else
@@ -877,9 +895,10 @@ module ActiveMerchant #:nodoc:
             add_card_indicators(xml, parameters)
             add_stored_credentials(xml, parameters)
             add_pymt_brand_program_code(xml, payment_source, three_d_secure)
+            add_mc_scarecurring(xml, payment_source, parameters, three_d_secure)
             add_mc_program_protocol(xml, payment_source, three_d_secure)
             add_mc_directory_trans_id(xml, payment_source, three_d_secure)
-            add_ucafind(xml, payment_source, three_d_secure)
+            add_mc_ucafind(xml, payment_source, three_d_secure)
           end
         end
         xml.target!
@@ -972,6 +991,16 @@ module ActiveMerchant #:nodoc:
 
       def salem_mid?
         @options[:merchant_id].length == 6
+      end
+
+      def get_address(options)
+        options[:billing_address] || options[:address]
+      end
+
+      # Null characters are possible in some responses (namely, the respMsg field), causing XML parsing errors
+      # Prevent by substituting these with a valid placeholder string
+      def strip_invalid_xml_chars(xml)
+        xml.gsub(/\u0000/, '[null]')
       end
 
       # The valid characters include:

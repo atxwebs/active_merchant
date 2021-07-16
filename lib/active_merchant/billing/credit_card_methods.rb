@@ -11,7 +11,7 @@ module ActiveMerchant #:nodoc:
         'american_express'   => ->(num) { num =~ /^3[47]\d{13}$/ },
         'naranja'            => ->(num) { num&.size == 16 && in_bin_range?(num.slice(0, 6), NARANJA_RANGES) },
         'diners_club'        => ->(num) { num =~ /^3(0[0-5]|[68]\d)\d{11,16}$/ },
-        'jcb'                => ->(num) { num =~ /^(35(28|29|[3-8]\d)\d{12}|308800\d{10})$/ },
+        'jcb'                => ->(num) { num&.size == 16 && in_bin_range?(num.slice(0, 4), JCB_RANGES) },
         'dankort'            => ->(num) { num =~ /^5019\d{12}$/ },
         'maestro'            => lambda { |num|
           (12..19).cover?(num&.size) && (
@@ -32,7 +32,8 @@ module ActiveMerchant #:nodoc:
           )
         },
         'olimpica' => ->(num) { num =~ /^636853\d{10}$/ },
-        'creditel' => ->(num) { num =~ /^601933\d{10}$/ }
+        'creditel' => ->(num) { num =~ /^601933\d{10}$/ },
+        'confiable' => ->(num) { num =~ /^560718\d{10}$/ }
       }
 
       # http://www.barclaycard.co.uk/business/files/bin_rules.pdf
@@ -71,6 +72,12 @@ module ActiveMerchant #:nodoc:
       MASTERCARD_RANGES = [
         (222100..272099),
         (510000..559999),
+        [605272],
+        [606282],
+        [637095],
+        [637568],
+        (637599..637600),
+        [637609],
       ]
 
       MAESTRO_BINS = Set.new(
@@ -100,12 +107,12 @@ module ActiveMerchant #:nodoc:
             597077 597094 597143 597370 597410 597765 597855 597862
             598053 598054 598395 598585 598793 598794 598815 598835 598838 598880 598889
             599000 599069 599089 599148 599191 599310 599741 599742 599867
-            601070
+            601070 601638
             604983
             606126
             636380 636422 636502 636639
             637046 637756
-            639130
+            639130 639229
             690032]
       )
 
@@ -191,6 +198,10 @@ module ActiveMerchant #:nodoc:
         81000000..81099999, 81100000..81319999, 81320000..81519999, 81520000..81639999, 81640000..81719999
       ]
 
+      JCB_RANGES = [
+        3528..3589, 3088..3094, 3096..3102, 3112..3120, 3158..3159, 3337..3349
+      ]
+
       def self.included(base)
         base.extend(ClassMethods)
       end
@@ -198,7 +209,7 @@ module ActiveMerchant #:nodoc:
       def self.in_bin_range?(number, ranges)
         bin = number.to_i
         ranges.any? do |range|
-          range.cover?(bin)
+          range.include?(bin)
         end
       end
 
@@ -350,6 +361,8 @@ module ActiveMerchant #:nodoc:
           when 'creditel'
             valid_creditel_algo?(numbers)
           when 'alia'
+            true
+          when 'confiable'
             true
           else
             valid_luhn?(numbers)

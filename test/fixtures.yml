@@ -246,6 +246,10 @@ cyber_source:
   login: X
   password: Y
 
+cyber_source_latam_pe:
+  login: merchant_id
+  password: soap_key
+
 # Working credentials, no need to replace
 d_local:
   login: aeaf9bbfa1
@@ -657,6 +661,10 @@ pago_facil:
   service_id: 3
 
 # Working credentials, no need to replace
+pay_arc:
+  api_key: APIKEY
+
+# Working credentials, no need to replace
 pay_conex:
   account_id: '220614968961'
   api_accesskey: '69e9c4dd6b8ab9ab47da4e288df78315'
@@ -687,6 +695,11 @@ pay_junction_v2:
 pay_secure:
   login: LOGIN
   password: PASSWORD
+
+pay_trace:
+  username: USERNAME
+  password: PASSWORD
+  integrator_id: INTEGRATOR_ID
 
 paybox_direct:
   login: 1999888
@@ -804,6 +817,7 @@ payway_dot_com:
   login:      "sprerestwsdev"
   password:   "sprerestwsdev1!"
   company_id: "3"
+  source_id: "67"
 
 pin:
   api_key: "I_mo9BUUUXIwXF-avcs3LA"
