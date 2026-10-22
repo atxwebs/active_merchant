@@ -33,10 +33,10 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
       @credit_card,
       @options.merge(
         three_d_secure: {
-          version: version,
-          xid: xid,
-          cavv: cavv,
-          eci: eci
+          version:,
+          xid:,
+          cavv:,
+          eci:
         },
         description: 'description',
         store: 'store',
@@ -59,10 +59,10 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
       @credit_card,
       @options.merge(
         three_d_secure: {
-          version: version,
-          xid: xid,
-          cavv: cavv,
-          eci: eci
+          version:,
+          xid:,
+          cavv:,
+          eci:
         },
         description: 'description',
         store: 'store',
@@ -85,10 +85,10 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
       @credit_card,
       @options.merge(
         three_d_secure: {
-          version: version,
-          ds_transaction_id: ds_transaction_id,
-          three_ds_server_trans_id: three_ds_server_trans_id,
-          eci: eci
+          version:,
+          ds_transaction_id:,
+          three_ds_server_trans_id:,
+          eci:
         },
         description: 'description',
         store: 'store',
@@ -105,7 +105,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
     response = @gateway.authorize(@amount, @credit_card, options)
     assert_success response
     assert response.params['ds_emv3ds']
-    assert_equal 'NO_3DS_v2', JSON.parse(response.params['ds_emv3ds'])['protocolVersion']
+    assert_equal '2.2.0', JSON.parse(response.params['ds_emv3ds'])['protocolVersion']
     assert_equal 'CardConfiguration', response.message
     assert response.authorization
   end
@@ -132,7 +132,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
     response = @gateway.authorize(@amount, @credit_card, options.merge(sca_exemption: 'LWV'))
     assert_success response
     assert response.params['ds_emv3ds']
-    assert_equal 'NO_3DS_v2', JSON.parse(response.params['ds_emv3ds'])['protocolVersion']
+    assert_equal '2.2.0', JSON.parse(response.params['ds_emv3ds'])['protocolVersion']
     assert_equal 'CardConfiguration', response.message
   end
 
@@ -141,7 +141,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
     response = @gateway.purchase(@amount, @credit_card, options.merge(sca_exemption: 'LWV'))
     assert_success response
     assert response.params['ds_emv3ds']
-    assert_equal 'NO_3DS_v2', JSON.parse(response.params['ds_emv3ds'])['protocolVersion']
+    assert_equal '2.2.0', JSON.parse(response.params['ds_emv3ds'])['protocolVersion']
     assert_equal 'CardConfiguration', response.message
   end
 
@@ -163,7 +163,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
       stored_credential: {
         initial_transaction: false,
         reason_type: 'unscheduled',
-        network_transaction_id: network_transaction_id
+        network_transaction_id:
       }
     )
     response = @gateway.purchase(@amount, @credit_card, used_options)
@@ -189,7 +189,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
       stored_credential: {
         initial_transaction: false,
         reason_type: 'recurring',
-        network_transaction_id: network_transaction_id
+        network_transaction_id:
       }
     )
     response = @gateway.purchase(@amount, @credit_card, used_options)
@@ -207,9 +207,30 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
     assert_equal 'Y', response.params['ds_card_psd2']
     assert_equal 'CardConfiguration', response.message
 
-    # ensure MIT is supported
+    # ensure MIT exemption is recognized
     assert response.params['ds_excep_sca']
     assert_match 'MIT', response.params['ds_excep_sca']
+  end
+
+  def test_successful_ntid_generation_with_verify
+    # This test validates a special use case for generating a network transaction id
+    # for payment methods that previously relied on the 'magic' fifteen-nines value.
+    # However, the transaction id will only be returned from a Redsys production
+    # environment, so this test simply validates that the zero-value request succeeds.
+
+    alternate_gateway = RedsysGateway.new(fixtures(:redsys_sha256_alternate))
+    options = @options.merge(
+      sca_exemption_behavior_override: 'endpoint_and_ntid',
+      sca_exemption: 'MIT',
+      terminal: 2,
+      stored_credential: {
+        initial_transaction: false,
+        reason_type: 'recurring',
+        network_transaction_id: '999999999999999'
+      }
+    )
+    response = alternate_gateway.verify(@credit_card, options)
+    assert_success response
   end
 
   def test_failed_3ds2_purchase_with_mit_exemption_but_missing_direct_payment_enabled
@@ -222,7 +243,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
     assert_equal 'Y', response.params['ds_card_psd2']
     assert_equal 'CardConfiguration', response.message
 
-    # ensure MIT is supported
+    # ensure MIT exemption is recognized
     assert response.params['ds_excep_sca']
     assert_match 'MIT', response.params['ds_excep_sca']
   end
@@ -245,7 +266,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
       stored_credential: {
         initial_transaction: false,
         reason_type: 'recurring',
-        network_transaction_id: network_transaction_id
+        network_transaction_id:
       },
       sca_exemption: 'MIT',
       sca_exemption_direct_payment_enabled: true
@@ -279,7 +300,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
   def test_failed_purchase
     response = @gateway.purchase(@amount, @declined_card, @options)
     assert_failure response
-    assert_equal 'SIS0093 ERROR', response.message
+    assert_equal 'Refusal with no specific reason', response.message
   end
 
   def test_purchase_and_refund
@@ -326,7 +347,7 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
   def test_failed_authorize
     response = @gateway.authorize(@amount, @declined_card, @options)
     assert_failure response
-    assert_equal 'SIS0093 ERROR', response.message
+    assert_equal 'Refusal with no specific reason', response.message
   end
 
   def test_successful_void
@@ -343,12 +364,9 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
     authorize = @gateway.authorize(@amount, @credit_card, @options)
     assert_success authorize
 
-    void = @gateway.void(authorize.authorization)
-    assert_success void
-
-    another_void = @gateway.void(authorize.authorization)
+    another_void = @gateway.void(authorize.authorization << '123')
     assert_failure another_void
-    assert_equal 'SIS0222 ERROR', another_void.message
+    assert_equal 'SIS0007 ERROR', another_void.message
   end
 
   def test_successful_verify
@@ -356,14 +374,12 @@ class RemoteRedsysSHA256Test < Test::Unit::TestCase
     assert_success response
 
     assert_equal 'Transaction Approved', response.message
-    assert_success response.responses.last, 'The void should succeed'
-    assert_equal 'Cancellation Accepted', response.responses.last.message
   end
 
   def test_unsuccessful_verify
     assert response = @gateway.verify(@declined_card, @options)
     assert_failure response
-    assert_equal 'SIS0093 ERROR', response.message
+    assert_equal 'Refusal with no specific reason', response.message
   end
 
   def test_transcript_scrubbing

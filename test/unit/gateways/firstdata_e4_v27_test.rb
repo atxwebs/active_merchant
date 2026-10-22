@@ -286,7 +286,7 @@ class FirstdataE4V27Test < Test::Unit::TestCase
       stub_comms do
         credit_card = network_tokenization_credit_card(
           '378282246310005',
-          brand: brand,
+          brand:,
           transaction_id: '123',
           eci: '05',
           payment_cryptogram: 'whatever_the_cryptogram_is'
@@ -1001,7 +1001,7 @@ class FirstdataE4V27Test < Test::Unit::TestCase
         read: true
         socket:
     RESPONSE
-    YAML.safe_load(yamlexcep, ['Net::HTTPBadRequest', 'ActiveMerchant::ResponseError'])
+    YAML.safe_load(yamlexcep, permitted_classes: ['Net::HTTPBadRequest', 'ActiveMerchant::ResponseError'])
   end
 
   def bad_credentials_response
@@ -1038,7 +1038,7 @@ class FirstdataE4V27Test < Test::Unit::TestCase
         http_version: '1.1'
         socket:
     RESPONSE
-    YAML.safe_load(yamlexcep, ['Net::HTTPUnauthorized', 'ActiveMerchant::ResponseError'])
+    YAML.safe_load(yamlexcep, permitted_classes: ['Net::HTTPUnauthorized', 'ActiveMerchant::ResponseError'])
   end
 
   def successful_void_response

@@ -172,6 +172,16 @@ class PaypalTest < Test::Unit::TestCase
     assert_success response
   end
 
+  def test_purchase_and_inquire
+    purchase_response = @gateway.purchase(@amount, @credit_card, @params)
+    assert_success purchase_response
+    assert purchase_response.params['transaction_id']
+
+    response = @gateway.inquire(purchase_response.authorization, {})
+    assert_success response
+    assert_equal 'Success', response.message
+  end
+
   def test_purchase_and_full_credit
     purchase = @gateway.purchase(@amount, @credit_card, @params)
     assert_success purchase
@@ -232,9 +242,11 @@ class PaypalTest < Test::Unit::TestCase
     response = @gateway.purchase(900, @credit_card, @params)
     assert_success response
 
-    response = @gateway.transfer([@amount, 'joe@example.com'],
+    response = @gateway.transfer(
+      [@amount, 'joe@example.com'],
       [600, 'jane@example.com', { note: 'Thanks for taking care of that' }],
-      subject: 'Your money')
+      subject: 'Your money'
+    )
     assert_success response
   end
 

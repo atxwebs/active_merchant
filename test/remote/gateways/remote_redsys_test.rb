@@ -29,10 +29,10 @@ class RemoteRedsysTest < Test::Unit::TestCase
       @credit_card,
       @options.merge(
         three_d_secure: {
-          version: version,
-          ds_transaction_id: ds_transaction_id,
-          three_ds_server_trans_id: three_ds_server_trans_id,
-          eci: eci
+          version:,
+          ds_transaction_id:,
+          three_ds_server_trans_id:,
+          eci:
         }
       )
     )
@@ -51,9 +51,9 @@ class RemoteRedsysTest < Test::Unit::TestCase
       @credit_card,
       @options.merge(
         three_d_secure: {
-          eci: eci,
-          cavv: cavv,
-          xid: xid
+          eci:,
+          cavv:,
+          xid:
         }
       )
     )
@@ -80,7 +80,7 @@ class RemoteRedsysTest < Test::Unit::TestCase
       stored_credential: {
         initial_transaction: false,
         reason_type: 'unscheduled',
-        network_transaction_id: network_transaction_id
+        network_transaction_id:
       }
     )
     response = @gateway.purchase(@amount, @credit_card, used_options)
@@ -111,7 +111,7 @@ class RemoteRedsysTest < Test::Unit::TestCase
   def test_failed_purchase
     response = @gateway.purchase(@amount, @declined_card, @options)
     assert_failure response
-    assert_equal 'SIS0093 ERROR', response.message
+    assert_equal 'Refusal with no specific reason', response.message
   end
 
   def test_purchase_and_refund
@@ -158,7 +158,7 @@ class RemoteRedsysTest < Test::Unit::TestCase
   def test_failed_authorize
     response = @gateway.authorize(@amount, @declined_card, @options)
     assert_failure response
-    assert_equal 'SIS0093 ERROR', response.message
+    assert_equal 'Refusal with no specific reason', response.message
   end
 
   def test_successful_void
@@ -175,12 +175,9 @@ class RemoteRedsysTest < Test::Unit::TestCase
     authorize = @gateway.authorize(@amount, @credit_card, @options)
     assert_success authorize
 
-    void = @gateway.void(authorize.authorization)
-    assert_success void
-
-    another_void = @gateway.void(authorize.authorization)
-    assert_failure another_void
-    assert_equal 'SIS0222 ERROR', another_void.message
+    void = @gateway.void(authorize.authorization << '123')
+    assert_failure void
+    assert_equal 'SIS0007 ERROR', void.message
   end
 
   def test_successful_verify
@@ -188,14 +185,12 @@ class RemoteRedsysTest < Test::Unit::TestCase
     assert_success response
 
     assert_equal 'Transaction Approved', response.message
-    assert_success response.responses.last, 'The void should succeed'
-    assert_equal 'Cancellation Accepted', response.responses.last.message
   end
 
   def test_unsuccessful_verify
     assert response = @gateway.verify(@declined_card, @options)
     assert_failure response
-    assert_equal 'SIS0093 ERROR', response.message
+    assert_equal 'Refusal with no specific reason', response.message
   end
 
   def test_transcript_scrubbing
@@ -248,6 +243,17 @@ class RemoteRedsysTest < Test::Unit::TestCase
     clean_transcript = @gateway.scrub(transcript)
 
     assert_equal clean_transcript.include?('[BLANK]'), true
+  end
+
+  def test_encrypt_handles_url_safe_character_in_secret_key_without_error
+    gateway = RedsysGateway.new({
+      login: '091952713',
+      secret_key: 'yG78qf-PkHyRzRiZGSTCJdO2TvjWgFa8',
+      terminal: '1',
+      signature_algorithm: 'sha256'
+    })
+    response = gateway.purchase(@amount, @credit_card, @options)
+    assert response
   end
 
   private

@@ -1,7 +1,7 @@
 require 'test_helper'
 
-module ActiveMerchant #:nodoc:
-  module Billing #:nodoc:
+module ActiveMerchant # :nodoc:
+  module Billing # :nodoc:
     class VposGateway
       def one_time_public_key
         OpenSSL::PKey::RSA.new(2048)
@@ -11,8 +11,10 @@ module ActiveMerchant #:nodoc:
 end
 
 class VposTest < Test::Unit::TestCase
+  include CommStub
+
   def setup
-    @gateway = VposGateway.new(public_key: 'some_key', private_key: 'some_other_key')
+    @gateway = VposGateway.new(public_key: 'some_key', private_key: 'some_other_key', encryption_key: OpenSSL::PKey::RSA.new(512))
     @credit_card = credit_card
     @amount = 10000
 
@@ -28,8 +30,14 @@ class VposTest < Test::Unit::TestCase
     response = @gateway.purchase(@amount, @credit_card, @options)
     assert_success response
 
-    assert_equal '701175', response.authorization
+    assert_equal '701175#233024225526089', response.authorization
     assert response.test?
+  end
+
+  def test_successful_generate_one_time_public_key
+    encryiption_key = @gateway.one_time_public_key
+    assert_instance_of OpenSSL::PKey::RSA, encryiption_key
+    assert_equal 256, encryiption_key.n.num_bytes
   end
 
   def test_failed_purchase
@@ -40,12 +48,30 @@ class VposTest < Test::Unit::TestCase
     assert_equal '57', response.error_code
   end
 
+  def test_successful_credit
+    @gateway.expects(:ssl_post).returns(successful_credit_response)
+
+    response = @gateway.credit(@amount, @credit_card, @options)
+    assert_success response
+
+    assert_equal '707860#948868617271843', response.authorization
+    assert response.test?
+  end
+
+  def test_failed_credit
+    @gateway.expects(:ssl_post).returns(failed_credit_response)
+
+    response = @gateway.credit(@amount, @credit_card, @options)
+    assert_failure response
+    assert_equal 'RefundsServiceError:TIPO DE TRANSACCION NO PERMITIDA PARA TARJETAS EXTRANJERAS', response.message
+  end
+
   def test_successful_void
     @gateway.expects(:ssl_post).returns(successful_void_response)
 
-    response = @gateway.void(nil)
+    response = @gateway.void('123#456')
     assert_success response
-    assert_equal 'RollbackSuccessful', response.message
+    assert_equal 'RollbackSuccessful:Transacción Aprobada', response.message
   end
 
   def test_failed_void
@@ -53,7 +79,15 @@ class VposTest < Test::Unit::TestCase
 
     response = @gateway.void(nil)
     assert_failure response
-    assert_equal 'AlreadyRollbackedError', response.message
+    assert_equal 'AlreadyRollbackedError:The payment has already been rollbacked.', response.message
+  end
+
+  def test_successful_inquire
+    stub_comms(@gateway, :ssl_post) do
+      @gateway.inquire('authorization#123')
+    end.check_request do |_endpoint, data, _headers|
+      assert_match(/123/, data)
+    end.respond_with(successful_purchase_response)
   end
 
   def test_scrub
@@ -191,9 +225,13 @@ class VposTest < Test::Unit::TestCase
     %({"status":"success","confirmation":{"token":"d08dd5bd604f4c4ba1049195b9e015e2","shop_process_id":845868143743681,"response":"N","response_details":"Procesado Satisfactoriamente","authorization_number":null,"ticket_number":"2117962608","response_code":"57","response_description":"Transaccion denegada","extended_response_description":"IMPORTE DE LA TRN INFERIOR AL M\u00bfNIMO PERMITIDO","security_information":{"card_source":"I","customer_ip":"108.253.226.231","card_country":"UNITED STATES","version":"0.3","risk_index":0}}})
   end
 
-  # def successful_credit_response; end
+  def successful_credit_response
+    %({"status":"success","refund":{"status":4,"request_token":"74845bf692d3ff78ce5d5c7d0d8ecdfa","shop_process_id":948868617271843,"origin_shop_process_id":null,"amount":"1000.0","currency":"PYG","commerce":232,"commerce_branch":77,"ticket_number":2117984322,"authorization_code":"707860","response_code":"00","response_description":"Transaccion aprobada","extended_response":null}})
+  end
 
-  # def failed_credit_response; end
+  def failed_credit_response
+    %({"status":"error","messages":[{"level":"error","key":"RefundsServiceError","dsc":"TIPO DE TRANSACCION NO PERMITIDA PARA TARJETAS EXTRANJERAS"}]})
+  end
 
   def successful_void_response
     %({"status":"success","messages":[{"dsc":"Transacción Aprobada","key":"RollbackSuccessful","level":"info"}]})

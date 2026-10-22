@@ -1,5 +1,5 @@
-module ActiveMerchant #:nodoc:
-  module Billing #:nodoc:
+module ActiveMerchant # :nodoc:
+  module Billing # :nodoc:
     class NetbanxGateway < Gateway
       # Netbanx is the new REST based API for Optimal Payments / Paysafe
       self.test_url = 'https://api.test.netbanx.com/'
@@ -210,7 +210,7 @@ module ActiveMerchant #:nodoc:
         month = format(credit_card.month, :two_digits)
 
         # returns a hash (necessary in the card JSON object)
-        { month: month, year: year }
+        { month:, year: }
       end
 
       def add_order_id(post, options)
@@ -233,7 +233,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def map_3ds(three_d_secure_options)
-        mapped = {
+        {
           eci: three_d_secure_options[:eci],
           cavv: three_d_secure_options[:cavv],
           xid: three_d_secure_options[:xid],
@@ -241,8 +241,6 @@ module ActiveMerchant #:nodoc:
           threeDSecureVersion: three_d_secure_options[:version],
           directoryServerTransactionId: three_d_secure_options[:ds_transaction_id]
         }
-
-        mapped
       end
 
       def parse(body)

@@ -66,10 +66,10 @@ class RemoteEwayRapidTest < Test::Unit::TestCase
     xid = 'AAAAAAAA4n1uzQPRaATeQAAAAAA='
     authentication_response_status = 'Y'
     @options[:three_d_secure] = {
-      eci: eci,
-      cavv: cavv,
-      xid: xid,
-      authentication_response_status: authentication_response_status
+      eci:,
+      cavv:,
+      xid:,
+      authentication_response_status:
     }
 
     response = @gateway.purchase(@amount, @credit_card, @options)
@@ -86,11 +86,11 @@ class RemoteEwayRapidTest < Test::Unit::TestCase
     ds_transaction_id = '8fe2e850-a028-407e-9a18-c8cf7598ca10'
 
     @options[:three_d_secure] = {
-      version: version,
-      eci: eci,
-      cavv: cavv,
-      ds_transaction_id: ds_transaction_id,
-      authentication_response_status: authentication_response_status
+      version:,
+      eci:,
+      cavv:,
+      ds_transaction_id:,
+      authentication_response_status:
     }
 
     response = @gateway.purchase(@amount, @credit_card, @options)
@@ -112,7 +112,9 @@ class RemoteEwayRapidTest < Test::Unit::TestCase
   end
 
   def test_fully_loaded_purchase
-    response = @gateway.purchase(@amount, @credit_card,
+    response = @gateway.purchase(
+      @amount,
+      @credit_card,
       redirect_url: 'http://awesomesauce.com',
       ip: '0.0.0.0',
       application_id: 'Woohoo',
@@ -148,7 +150,8 @@ class RemoteEwayRapidTest < Test::Unit::TestCase
         country:  'US',
         phone:    '1115555555',
         fax:      '1115556666'
-      })
+      }
+    )
     assert_success response
   end
 
